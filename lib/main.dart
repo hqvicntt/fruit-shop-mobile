@@ -39,10 +39,11 @@ class _FruitListScreenState extends State<FruitListScreen> {
   // Boolean variable to track the loading state
   bool _isLoading = true;
 
+  // CRITICAL: Replace with your computer's real IPv4 address
+  static const String computerIp = 'Your_Computer_IPv4_Address';
+
   // Function to fetch real-time fruit data from Laravel backend
   Future<void> _fetchFruitsFromBackend() async {
-    // CRITICAL: Replace with your computer's real IPv4 address
-    const String computerIp = 'Your_Computer_IPv4_Address';
     const String apiUrl =
         'http://$computerIp:8000/api/products'; // Path to product list api
 
@@ -77,6 +78,35 @@ class _FruitListScreenState extends State<FruitListScreen> {
           ),
         ),
       );
+    }
+  }
+
+  // Function to send a DELETE request to Laravel backend
+  Future<void> _deleteFruitFromBackend(int id) async {
+    final String apiUrl = 'http://$computerIp:8000/api/products/$id'; // Endpoint with specific fruit ID
+
+    try {
+      // Send the HTTP DELETE request to the server
+      final response = await http.delete(Uri.parse(apiUrl));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+
+        if (responseData['success'] == true) {
+          // Show a quick success notification
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Xóa trái cây thành công!')),
+          );
+          // Refresh the list immediately
+          _fetchFruitsFromBackend();
+        }
+      } else {
+        throw Exception('Không thể xóa sản phẩm trên Server');
+      }
+    } catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi khi xóa trái cây: $error')));
     }
   }
 
@@ -147,26 +177,78 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                 ),
                               ],
                             ),
-                            trailing: ElevatedButton(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Đã chọn mua ${fruit['name']}',
+                            // Trailing option containing both Buy button and Delete icon
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize
+                                  .min, // Keep row as small as its children
+                              children: [
+                                ElevatedButton(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Đã chọn mua ${fruit['name']}',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                  ),
+                                  child: const Text(
+                                    'Mua',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                              ),
-                              child: const Text(
-                                'Mua',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
                                 ),
-                              ),
+                                const SizedBox(width: 8), // Gap between buttons
+                                // Red trash bin icon button for deletion
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () {
+                                    // Show native confirmation dialog on mobile screen
+                                    showDialog(
+                                      context: context,
+                                      builder: (BuildContext context) {
+                                        return AlertDialog(
+                                          title: const Text('Xác nhận xóa'),
+                                          content: Text(
+                                            'Bạn có chắc chắn muốn xóa "${fruit['name']}" không?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(context)
+                                                      .pop(), // Close pop-up
+                                              child: const Text('Hủy'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.of(context)
+                                                    .pop(); // Close pop-up
+                                                _deleteFruitFromBackend(
+                                                  fruit['id'],
+                                                ); // Run delete function
+                                              },
+                                              child: const Text(
+                                                'Xóa',
+                                                style: TextStyle(
+                                                  color: Colors.red,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                         );
