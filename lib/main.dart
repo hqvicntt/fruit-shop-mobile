@@ -860,6 +860,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                     ),
                                     Row(
                                       children: [
+                                        // Minus button: decrease quantity by 0.1 kg
                                         IconButton(
                                           icon: const Icon(
                                             Icons.remove_circle_outline,
@@ -867,22 +868,31 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                           ),
                                           onPressed: currentQty > 0
                                               ? () => setState(() {
-                                                  if (currentQty <= 0.5) {
+                                                  // Round to 1 decimal place to avoid floating-point errors
+                                                  double updatedQty =
+                                                      double.parse(
+                                                        (currentQty - 0.1)
+                                                            .toStringAsFixed(1),
+                                                      );
+                                                  if (updatedQty <= 0.0) {
                                                     _cart.remove(id);
                                                   } else {
-                                                    _cart[id] =
-                                                        currentQty - 0.5;
+                                                    _cart[id] = updatedQty;
                                                   }
                                                 })
                                               : null,
                                         ),
+
+                                        // Display quantity rounded to 1 decimal place
                                         Text(
-                                          '$currentQty kg',
+                                          '${currentQty.toStringAsFixed(1)} kg',
                                           style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
+
+                                        // Plus button: increase quantity by 0.1 kg
                                         IconButton(
                                           icon: const Icon(
                                             Icons.add_circle_outline,
@@ -893,7 +903,17 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                                   (fruit['stock'] as num)
                                                       .toDouble()
                                               ? () => setState(() {
-                                                  _cart[id] = currentQty + 0.5;
+                                                  double updatedQty =
+                                                      double.parse(
+                                                        (currentQty + 0.1)
+                                                            .toStringAsFixed(1),
+                                                      );
+                                                  // Ensure updated quantity does not exceed stock
+                                                  if (updatedQty <=
+                                                      (fruit['stock'] as num)
+                                                          .toDouble()) {
+                                                    _cart[id] = updatedQty;
+                                                  }
                                                 })
                                               : null,
                                         ),
