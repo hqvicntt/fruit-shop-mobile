@@ -120,6 +120,129 @@ class _FruitListScreenState extends State<FruitListScreen> {
     }
   }
 
+  // Function to send a POST request to add a new fruit to MySQL
+  Future<void> _addNewFruitToBackend(
+    String name,
+    int price,
+    double stock,
+  ) async {
+    final String apiUrl = 'http://$computerIp:8000/api/products';
+
+    try {
+      // Send HTTP POST request with fruit details in JSON format
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode({'name': name, 'price': price, 'stock': stock}),
+      );
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Thêm trái cây mới thành công!')),
+        );
+        // Refresh the fruit list immediately
+        await _fetchFruitsFromBackend();
+      } else {
+        throw Exception('Lỗi từ máy chủ: ${response.statusCode}');
+      }
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể thêm trái cây: $error')),
+      );
+    }
+  }
+
+  // Function to display a pop-up dialog for adding a new fruit
+  void _openAddFruitDialog() {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController priceController = TextEditingController();
+    final TextEditingController stockController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Nhập Trái Cây Mới',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên trái cây (VD: Chôm chôm)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá bán (đ/kg)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: stockController,
+                  // Allow decimal numbers like 15.5 kg
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Số lượng nhập kho (kg)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                final String name = nameController.text.trim();
+                final int? price = int.tryParse(priceController.text.trim());
+                final double? stock = double.tryParse(
+                  stockController.text.trim(),
+                );
+
+                // Basic input validation
+                if (name.isEmpty || price == null || stock == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Vui lòng nhập đúng và đủ thông tin!'),
+                    ),
+                  );
+                  return;
+                }
+
+                // Close the dialog and call the API
+                Navigator.of(context).pop();
+                await _addNewFruitToBackend(name, price, stock);
+              },
+              child: const Text(
+                'Lưu Vào Kho',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // Function to deduct stock quantities AND save the order to MySQL
   Future<void> _processOrderAndDeductStock(
     int totalAmount,
@@ -450,6 +573,11 @@ class _FruitListScreenState extends State<FruitListScreen> {
         centerTitle: true,
         // Add an icon button on the right side of the AppBar to open Revenue Report
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle, color: Colors.white, size: 28),
+            tooltip: 'Thêm trái cây mới',
+            onPressed: _openAddFruitDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.white, size: 28),
             tooltip: 'Xem doanh thu hôm nay',
