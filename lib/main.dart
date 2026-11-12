@@ -4,9 +4,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
-  // The entry point of the mobile application
+Future<void> main() async {
+  // Load the .env file before starting the app
+  await dotenv.load(fileName: ".env");
+
   runApp(const MyApp());
 }
 
@@ -44,12 +47,12 @@ class _FruitListScreenState extends State<FruitListScreen> {
   // Shopping cart dictionary to store fruit id and its selected quantity
   final Map<int, double> _cart = {};
 
-  // CRITICAL: Replace with your computer's real IPv4 address
-  static const String computerIp = '';
+  // Read the computer IP from the .env file, fallback to empty string if not found
+  static final String computerIp = dotenv.env['COMPUTER_IP'] ?? '';
 
   // Function to fetch real-time fruit data from Laravel backend
   Future<void> _fetchFruitsFromBackend() async {
-    const String apiUrl =
+    final String apiUrl =
         'http://$computerIp:8000/api/products'; // Path to product list api
 
     try {
@@ -195,10 +198,13 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
   // Generate standard VietQR text string for banking apps to decode
   String _generateVietQRString(double amount) {
-    // BANK CONFIGURATION - CHANGE TO YOUR REAL DETAILS HERE
-    const String bankId = ''; // Bank name (ví dụ: vcb, mbbank, bidv)
-    const String accountNo = ''; // Your bank account number
-    const String accountName = ''; // Account holder name
+    // Read bank credentials securely from the .env file
+    final String bankId =
+        dotenv.env['BANK_ID'] ?? ''; // Bank name (EX: vcb, mbbank, bidv)
+    final String accountNo =
+        dotenv.env['ACCOUNT_NO'] ?? ''; // Your bank account number
+    final String accountName =
+        dotenv.env['ACCOUNT_NAME'] ?? ''; // Account holder name
 
     final int amountInt = amount.toInt();
 
