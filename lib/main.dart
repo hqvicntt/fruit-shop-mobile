@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'revenue_report_screen.dart';
+
 Future<void> main() async {
   // Load the .env file before starting the app
   await dotenv.load(fileName: ".env");
@@ -329,6 +331,22 @@ class _FruitListScreenState extends State<FruitListScreen> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
+        // Add an icon button on the right side of the AppBar to open Revenue Report
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart, color: Colors.white, size: 28),
+            tooltip: 'Xem doanh thu hôm nay',
+            onPressed: () {
+              // Navigate to RevenueReportScreen
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RevenueReportScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       // Display a circular progress bar if data is still loading
       body: _isLoading
