@@ -93,22 +93,26 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
   // Function to send a DELETE request to Laravel backend
   Future<void> _deleteFruitFromBackend(int id) async {
-    final String apiUrl = 'http://$computerIp:8000/api/products/$id'; // Endpoint with specific fruit ID
+    final String apiUrl = 'http://$computerIp:8000/api/products/$id';
 
     try {
-      // Send the HTTP DELETE request to the server
       final response = await http.delete(Uri.parse(apiUrl));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
 
         if (responseData['success'] == true) {
-          // Show a quick success notification
+          // Remove the fruit from shopping cart if it was selected
+          setState(() {
+            _cart.remove(id);
+          });
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Xóa trái cây thành công!')),
           );
+
           // Refresh the list immediately
-          _fetchFruitsFromBackend();
+          await _fetchFruitsFromBackend();
         }
       } else {
         throw Exception('Không thể xóa sản phẩm trên Server');
@@ -279,6 +283,42 @@ class _FruitListScreenState extends State<FruitListScreen> {
               },
               child: const Text(
                 'Lưu Thay Đổi',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Function to display a confirmation dialog before deleting a fruit
+  void _confirmDeleteFruit(int id, String name) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Xác Nhận Xóa',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+          ),
+          content: Text(
+            'Bạn chắc chắn muốn xóa "$name" khỏi danh sách bán không?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () async {
+                // Close the confirmation dialog and call delete API
+                Navigator.of(context).pop();
+                await _deleteFruitFromBackend(id);
+              },
+              child: const Text(
+                'Xóa Luôn',
                 style: TextStyle(color: Colors.white),
               ),
             ),
@@ -789,6 +829,19 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                         tooltip: 'Sửa giá hoặc số ký',
                                         onPressed: () =>
                                             _openEditFruitDialog(fruit),
+                                      ),
+                                      // Delete icon button
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          color: Colors.red,
+                                          size: 22,
+                                        ),
+                                        tooltip: 'Xóa trái cây này',
+                                        onPressed: () => _confirmDeleteFruit(
+                                          id,
+                                          fruit['name'],
+                                        ),
                                       ),
                                     ],
                                   ),
