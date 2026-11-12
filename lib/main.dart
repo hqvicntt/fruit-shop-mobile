@@ -155,6 +155,139 @@ class _FruitListScreenState extends State<FruitListScreen> {
     }
   }
 
+  // Function to send a PUT request to update an existing fruit in MySQL
+  Future<void> _updateFruitInBackend(
+    int id,
+    String name,
+    int price,
+    double stock,
+  ) async {
+    final String apiUrl = 'http://$computerIp:8000/api/products/$id';
+
+    try {
+      // Send HTTP PUT request with updated fruit details
+      final response = await http.put(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode({'name': name, 'price': price, 'stock': stock}),
+      );
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cập nhật thông tin trái cây thành công!'),
+          ),
+        );
+        // Refresh the fruit list immediately
+        await _fetchFruitsFromBackend();
+      } else {
+        throw Exception('Lỗi từ máy chủ: ${response.statusCode}');
+      }
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể cập nhật trái cây: $error')),
+      );
+    }
+  }
+
+  // Function to display a pop-up dialog pre-filled with existing fruit data for editing
+  void _openEditFruitDialog(Map<String, dynamic> fruit) {
+    // Pre-fill the controllers with the selected fruit's current data
+    final TextEditingController nameController = TextEditingController(
+      text: fruit['name'],
+    );
+    final TextEditingController priceController = TextEditingController(
+      text: fruit['price'].toString(),
+    );
+    final TextEditingController stockController = TextEditingController(
+      text: fruit['stock'].toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Sửa Thông Tin Trái Cây',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên trái cây',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá bán mới (đ/kg)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: stockController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Số lượng kho mới (kg)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: () async {
+                final String name = nameController.text.trim();
+                final int? price = int.tryParse(priceController.text.trim());
+                final double? stock = double.tryParse(
+                  stockController.text.trim(),
+                );
+
+                // Basic input validation
+                // Xác thực dữ liệu đầu vào cơ bản
+                if (name.isEmpty || price == null || stock == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Vui lòng nhập đúng và đủ thông tin!'),
+                    ),
+                  );
+                  return;
+                }
+
+                // Close the dialog and call the update API
+                Navigator.of(context).pop();
+                await _updateFruitInBackend(fruit['id'], name, price, stock);
+              },
+              child: const Text(
+                'Lưu Thay Đổi',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // Function to display a pop-up dialog for adding a new fruit
   void _openAddFruitDialog() {
     final TextEditingController nameController = TextEditingController();
@@ -635,12 +768,29 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  trailing: Text(
-                                    'Kho: ${fruit['stock']} kg',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey,
-                                    ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Kho: ${fruit['stock']} kg',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      // Edit icon button to open the edit dialog
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.edit,
+                                          color: Colors.orange,
+                                          size: 22,
+                                        ),
+                                        tooltip: 'Sửa giá hoặc số ký',
+                                        onPressed: () =>
+                                            _openEditFruitDialog(fruit),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const Divider(),
