@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 
 import 'dart:convert';
 
+import 'package:qr_flutter/qr_flutter.dart';
+
 void main() {
   // The entry point of the mobile application
   runApp(const MyApp());
@@ -39,8 +41,11 @@ class _FruitListScreenState extends State<FruitListScreen> {
   // Boolean variable to track the loading state
   bool _isLoading = true;
 
+  // Shopping cart dictionary to store fruit id and its selected quantity
+  final Map<int, double> _cart = {};
+
   // CRITICAL: Replace with your computer's real IPv4 address
-  static const String computerIp = 'Your_Computer_IPv4_Address';
+  static const String computerIp = '';
 
   // Function to fetch real-time fruit data from Laravel backend
   Future<void> _fetchFruitsFromBackend() async {
@@ -117,6 +122,141 @@ class _FruitListScreenState extends State<FruitListScreen> {
     _fetchFruitsFromBackend();
   }
 
+  // Calculate the total price of all items currently in the cart
+  double _calculateTotalAmount() {
+    double total = 0;
+    _cart.forEach((fruitId, quantity) {
+      final fruit = _fruits.firstWhere(
+        (item) => item['id'] == fruitId,
+        orElse: () => null,
+      );
+      if (fruit != null) {
+        total += (fruit['price'] as num) * quantity;
+      }
+    });
+    return total;
+  }
+
+  // Generate standard VietQR text string for banking apps to decode
+  String _generateVietQRString(double amount) {
+    // BANK CONFIGURATION - CHANGE TO YOUR REAL DETAILS HERE
+    const String bankId = ''; // Bank name (ví dụ: vcb, mbbank, bidv)
+    const String accountNo = ''; // Your bank account number
+    const String accountName = ''; // Account holder name
+
+    final int amountInt = amount.toInt();
+
+    return 'https://img.vietqr.io/image/'
+        '$bankId-$accountNo-qr_only.png'
+        '?amount=$amountInt'
+        '&addInfo=Tien%20Trai%20Cay'
+        '&accountName=${Uri.encodeComponent(accountName)}';
+  }
+
+  // Function to open the Checkout Bottom Sheet with dynamic QR code
+  void _openCheckoutSheet() {
+    final double totalAmount = _calculateTotalAmount();
+    if (totalAmount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Giỏ hàng đang trống! Vui lòng chọn ký trái cây.'),
+        ),
+      );
+      return;
+    }
+
+    final String qrData = _generateVietQRString(totalAmount);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 50,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'HÓA ĐƠN QUÉT MÃ',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Tổng tiền thanh toán:',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              Text(
+                '${totalAmount.toInt().toString()} đ',
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Display the generated QR code utilizing qr_flutter package
+              Image.network(
+                qrData,
+                width: 300,
+                height: 300,
+                fit: BoxFit.contain,
+              ),
+
+              const SizedBox(height: 16),
+              const Text(
+                'Khách mở App Ngân hàng quét mã này là xong nhé!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _cart.clear();
+                  }); // Clear cart
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                child: const Text(
+                  'Hoàn Thành & Đóng',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -143,110 +283,90 @@ class _FruitListScreenState extends State<FruitListScreen> {
                       itemCount: _fruits.length,
                       itemBuilder: (context, index) {
                         final fruit = _fruits[index];
+                        final int id = fruit['id'];
+                        final double currentQty = _cart[id] ?? 0.0;
+
                         return Card(
                           elevation: 3,
                           margin: const EdgeInsets.symmetric(vertical: 8),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(16),
-                            title: Text(
-                              fruit['name'],
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
                               children: [
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Giá: ${fruit['price'].toString()} đ / kg',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Còn lại: ${fruit['stock'].toString()} kg',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // Trailing option containing both Buy button and Delete icon
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize
-                                  .min, // Keep row as small as its children
-                              children: [
-                                ElevatedButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Đã chọn mua ${fruit['name']}',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                  ),
-                                  child: const Text(
-                                    'Mua',
-                                    style: TextStyle(
-                                      color: Colors.white,
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    fruit['name'],
+                                    style: const TextStyle(
+                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8), // Gap between buttons
-                                // Red trash bin icon button for deletion
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
+                                  subtitle: Text(
+                                    'Giá: ${fruit['price']} đ/kg',
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                  onPressed: () {
-                                    // Show native confirmation dialog on mobile screen
-                                    showDialog(
-                                      context: context,
-                                      builder: (BuildContext context) {
-                                        return AlertDialog(
-                                          title: const Text('Xác nhận xóa'),
-                                          content: Text(
-                                            'Bạn có chắc chắn muốn xóa "${fruit['name']}" không?',
+                                  trailing: Text(
+                                    'Kho: ${fruit['stock']} kg',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                const Divider(),
+                                // Interactive quantity selector row
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Số lượng mua:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            color: Colors.red,
                                           ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.of(context)
-                                                      .pop(), // Close pop-up
-                                              child: const Text('Hủy'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () {
-                                                Navigator.of(context)
-                                                    .pop(); // Close pop-up
-                                                _deleteFruitFromBackend(
-                                                  fruit['id'],
-                                                ); // Run delete function
-                                              },
-                                              child: const Text(
-                                                'Xóa',
-                                                style: TextStyle(
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    );
-                                  },
+                                          onPressed: currentQty > 0
+                                              ? () => setState(() {
+                                                  if (currentQty <= 0.5) {
+                                                    _cart.remove(id);
+                                                  } else {
+                                                    _cart[id] =
+                                                        currentQty - 0.5;
+                                                  }
+                                                })
+                                              : null,
+                                        ),
+                                        Text(
+                                          '$currentQty kg',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            color: Colors.green,
+                                          ),
+                                          onPressed: () => setState(() {
+                                            _cart[id] = currentQty + 0.5;
+                                          }),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -254,6 +374,63 @@ class _FruitListScreenState extends State<FruitListScreen> {
                         );
                       },
                     ),
+            ),
+      bottomNavigationBar: _cart.isEmpty
+          ? null
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.3),
+                    spreadRadius: 2,
+                    blurRadius: 7,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Tổng cộng:',
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                      Text(
+                        '${_calculateTotalAmount().toInt().toString()} đ',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  ElevatedButton(
+                    onPressed: _openCheckoutSheet,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: const Text(
+                      'Tạo Mã QR',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }
