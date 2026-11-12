@@ -115,6 +115,62 @@ class _FruitListScreenState extends State<FruitListScreen> {
     }
   }
 
+  // Function to deduct stock quantities after a successful checkout
+  Future<void> _processOrderAndDeductStock() async {
+    // Show a brief processing indicator or message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đang cập nhật số lượng kho hàng...')),
+    );
+
+    try {
+      // Loop through each item in the shopping cart
+      for (var entry in _cart.entries) {
+        final int fruitId = entry.key;
+        final double boughtQuantity = entry.value;
+
+        // Find the current fruit object in the local list to get its current stock
+        final fruit = _fruits.firstWhere(
+          (item) => item['id'] == fruitId,
+          orElse: () => null,
+        );
+
+        if (fruit != null) {
+          final double currentStock = (fruit['stock'] as num).toDouble();
+          // Calculate the remaining stock, ensuring it never goes below 0
+          final double newStock = (currentStock - boughtQuantity) < 0
+              ? 0.0
+              : (currentStock - boughtQuantity);
+
+          // Prepare the PUT API endpoint for updating this specific fruit
+          final String apiUrl = 'http://$computerIp:8000/api/products/$fruitId';
+
+          // Send PUT request with the new stock value to Laravel backend
+          await http.put(
+            Uri.parse(apiUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'stock': newStock}),
+          );
+        }
+      }
+
+      // Clear the cart and refresh the fruit list from the database
+      setState(() {
+        _cart.clear();
+      });
+      await _fetchFruitsFromBackend();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thanh toán hoàn tất và đã cập nhật kho!'),
+        ),
+      );
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi cập nhật kho hàng: $error')),
+      );
+    }
+  }
+
   // Lifecycle method that runs when the screen is first loaded
   @override
   void initState() {
@@ -231,11 +287,11 @@ class _FruitListScreenState extends State<FruitListScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _cart.clear();
-                  }); // Clear cart
+                onPressed: () async {
+                  // Close the QR bottom sheet first
                   Navigator.pop(context);
+                  // Execute the stock deduction function
+                  await _processOrderAndDeductStock();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -360,9 +416,14 @@ class _FruitListScreenState extends State<FruitListScreen> {
                                             Icons.add_circle_outline,
                                             color: Colors.green,
                                           ),
-                                          onPressed: () => setState(() {
-                                            _cart[id] = currentQty + 0.5;
-                                          }),
+                                          onPressed:
+                                              currentQty <
+                                                  (fruit['stock'] as num)
+                                                      .toDouble()
+                                              ? () => setState(() {
+                                                  _cart[id] = currentQty + 0.5;
+                                                })
+                                              : null,
                                         ),
                                       ],
                                     ),
