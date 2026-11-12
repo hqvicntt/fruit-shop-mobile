@@ -120,15 +120,22 @@ class _FruitListScreenState extends State<FruitListScreen> {
     }
   }
 
-  // Function to deduct stock quantities after a successful checkout
-  Future<void> _processOrderAndDeductStock() async {
+  // Function to deduct stock quantities AND save the order to MySQL
+  Future<void> _processOrderAndDeductStock(
+    int totalAmount,
+    int cashAmount,
+    int transferAmount,
+  ) async {
     // Show a brief processing indicator or message
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đang cập nhật số lượng kho hàng...')),
+      const SnackBar(content: Text('Đang lưu đơn hàng và cập nhật kho...')),
     );
 
+    // List to store summary text of each bought item (e.g., "Xoài Cát (2.0 kg)")
+    List<String> summaryItems = [];
+
     try {
-      // Loop through each item in the shopping cart
+      // Loop through cart to deduct stock in 'products' table
       for (var entry in _cart.entries) {
         final int fruitId = entry.key;
         final double boughtQuantity = entry.value;
@@ -140,6 +147,8 @@ class _FruitListScreenState extends State<FruitListScreen> {
         );
 
         if (fruit != null) {
+          // Add item name and quantity to summary list
+          summaryItems.add('${fruit['name']} ($boughtQuantity kg)');
           final double currentStock = (fruit['stock'] as num).toDouble();
           // Calculate the remaining stock, ensuring it never goes below 0
           final double newStock = (currentStock - boughtQuantity) < 0
@@ -147,16 +156,32 @@ class _FruitListScreenState extends State<FruitListScreen> {
               : (currentStock - boughtQuantity);
 
           // Prepare the PUT API endpoint for updating this specific fruit
-          final String apiUrl = 'http://$computerIp:8000/api/products/$fruitId';
+          final String updateProductUrl =
+              'http://$computerIp:8000/api/products/$fruitId';
 
           // Send PUT request with the new stock value to Laravel backend
           await http.put(
-            Uri.parse(apiUrl),
+            Uri.parse(updateProductUrl),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({'stock': newStock}),
           );
         }
       }
+
+      // 2. Send POST request to save order history in 'orders' table
+      final String createOrderUrl = 'http://$computerIp:8000/api/orders';
+      final String itemsSummaryText = summaryItems.join(', ');
+
+      await http.post(
+        Uri.parse(createOrderUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'total_amount': totalAmount,
+          'cash_amount': cashAmount,
+          'transfer_amount': transferAmount,
+          'items_summary': itemsSummaryText,
+        }),
+      );
 
       // Clear the cart and refresh the fruit list from the database
       setState(() {
@@ -166,7 +191,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Thanh toán hoàn tất và đã cập nhật kho!'),
+          content: Text('Đã lưu hóa đơn và cập nhật kho thành công!'),
         ),
       );
     } catch (error) {
@@ -217,9 +242,9 @@ class _FruitListScreenState extends State<FruitListScreen> {
         '&accountName=${Uri.encodeComponent(accountName)}';
   }
 
-  // Function to open the Checkout Bottom Sheet with dynamic QR code
+  // Function to open the Checkout Bottom Sheet with cash input & dynamic QR code
   void _openCheckoutSheet() {
-    final double totalAmount = _calculateTotalAmount();
+    final int totalAmount = _calculateTotalAmount().toInt();
     if (totalAmount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -229,7 +254,9 @@ class _FruitListScreenState extends State<FruitListScreen> {
       return;
     }
 
-    final String qrData = _generateVietQRString(totalAmount);
+    // Controller to read the cash amount entered by mom
+    final TextEditingController cashController = TextEditingController();
+    int cashAmount = 0;
 
     showModalBottomSheet(
       context: context,
@@ -238,84 +265,174 @@ class _FruitListScreenState extends State<FruitListScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 50,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'HÓA ĐƠN QUÉT MÃ',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Tổng tiền thanh toán:',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              Text(
-                '${totalAmount.toInt().toString()} đ',
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red,
-                ),
-              ),
-              const SizedBox(height: 20),
+        // StatefulBuilder allows updating the UI inside the BottomSheet dynamically
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            // Calculate remaining transfer amount (never less than 0)
+            int transferAmount = totalAmount - cashAmount;
+            if (transferAmount < 0) transferAmount = 0;
 
-              // Display the generated QR code utilizing qr_flutter package
-              Image.network(
-                qrData,
-                width: 300,
-                height: 300,
-                fit: BoxFit.contain,
-              ),
+            final String qrData = _generateVietQRString(
+              transferAmount.toDouble(),
+            );
 
-              const SizedBox(height: 16),
-              const Text(
-                'Khách mở App Ngân hàng quét mã này là xong nhé!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.blueGrey,
+            // Padding adjusts automatically when the mobile keyboard pops up
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'THANH TOÁN ĐƠN HÀNG',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tổng hóa đơn: $totalAmount đ',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Text field to enter cash received from customer
+                    TextField(
+                      controller: cashController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Tiền mặt khách đưa (đ)',
+                        hintText: 'Bỏ trống nếu khách chuyển khoản hết',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.money, color: Colors.green),
+                      ),
+                      onChanged: (value) {
+                        // Update cashAmount and redraw modal whenever mom types
+                        setModalState(() {
+                          cashAmount = int.tryParse(value) ?? 0;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Display the remaining amount that needs to be transferred
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Cần chuyển khoản:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '$transferAmount đ',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Only show the QR Code if transferAmount is greater than 0
+                    if (transferAmount > 0) ...[
+                      Image.network(
+                        qrData,
+                        width: 240,
+                        height: 240,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Khách mở App Ngân hàng quét mã này là xong nhé!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.blueGrey,
+                        ),
+                      ),
+                    ] else ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          'Khách đã trả đủ bằng tiền mặt!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () async {
+                        // Close bottom sheet
+                        Navigator.pop(context);
+
+                        // Ensure cashAmount saved does not exceed totalAmount (in case customer gave extra cash)
+                        int actualCashRevenue = cashAmount > totalAmount
+                            ? totalAmount
+                            : cashAmount;
+
+                        // Deduct stock and save order to MySQL
+                        await _processOrderAndDeductStock(
+                          totalAmount,
+                          actualCashRevenue,
+                          transferAmount,
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        minimumSize: const Size.fromHeight(50),
+                      ),
+                      child: const Text(
+                        'Hoàn Thành & Đóng',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () async {
-                  // Close the QR bottom sheet first
-                  Navigator.pop(context);
-                  // Execute the stock deduction function
-                  await _processOrderAndDeductStock();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  minimumSize: const Size.fromHeight(50),
-                ),
-                child: const Text(
-                  'Hoàn Thành & Đóng',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
