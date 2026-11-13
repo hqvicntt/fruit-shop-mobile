@@ -22,10 +22,21 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   List<dynamic> _orders = [];
   bool _isLoading = true;
 
-  // Fetch today's orders and revenue summary from Laravel API
+  // Store the currently selected date (defaults to today)
+  DateTime _selectedDate = DateTime.now();
+
+  // Fetch orders and revenue summary filtered by the selected date
   Future<void> _fetchTodayReport() async {
+    setState(() {
+      _isLoading = true;
+    });
+    // Format DateTime to YYYY-MM-DD string (e.g., "2026-11-13")
+    final String formattedDate =
+        '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
     final String computerIp = dotenv.env['COMPUTER_IP'] ?? '';
-    final String apiUrl = 'http://$computerIp:8000/api/orders';
+    final String apiUrl =
+        'http://$computerIp:8000/api/orders?date=$formattedDate';
 
     try {
       final response = await http.get(Uri.parse(apiUrl));
@@ -55,6 +66,24 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     }
   }
 
+  // Open native mobile date picker dialog
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(), // Cannot pick future dates
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      // Fetch report immediately for the newly picked date
+      await _fetchTodayReport();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +109,59 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Date Picker Bar at the top of the report screen
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.green.shade300),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Ngày: ${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        ElevatedButton(
+                          onPressed: () => _selectDate(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: const Text(
+                            'Chọn ngày',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                   // Summary Card showing Total, Cash, and Bank Transfer
                   Card(
                     color: Colors.green.shade50,
@@ -166,7 +248,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                     child: _orders.isEmpty
                         ? const Center(
                             child: Text(
-                              'Hôm nay chưa có đơn hàng nào được lưu.',
+                              'Không có đơn hàng nào được ghi nhận trong ngày này.',
                             ),
                           )
                         : ListView.builder(
