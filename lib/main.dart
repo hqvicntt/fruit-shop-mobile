@@ -8,6 +8,11 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'revenue_report_screen.dart';
 
+import 'package:flutter_tts/flutter_tts.dart';
+
+import 'dart:async';
+import 'dart:math';
+
 Future<void> main() async {
   // Load the .env file before starting the app
   await dotenv.load(fileName: ".env");
@@ -48,6 +53,18 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
   // Shopping cart dictionary to store fruit id and its selected quantity
   final Map<int, double> _cart = {};
+
+  // Initialize the Text-to-Speech engine
+  final FlutterTts _flutterTts = FlutterTts();
+
+  // Function to speak Vietnamese text aloud
+  Future<void> _speakVietnamese(String message) async {
+    await _flutterTts.setLanguage("vi-VN"); // Set language to Vietnamese
+    await _flutterTts.setSpeechRate(0.5); // Normal clear speaking speed
+    await _flutterTts.setVolume(1.0); // Maximum volume
+    await _flutterTts.setPitch(1.0); // Natural voice pitch
+    await _flutterTts.speak(message);
+  }
 
   // Read the computer IP from the .env file, fallback to empty string if not found
   static final String computerIp = dotenv.env['COMPUTER_IP'] ?? '';
@@ -520,7 +537,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
   }
 
   // Generate standard VietQR text string for banking apps to decode
-  String _generateVietQRString(double amount) {
+  String _generateVietQRString(double amount, String orderCode) {
     // Read bank credentials securely from the .env file
     final String bankId =
         dotenv.env['BANK_ID'] ?? ''; // Bank name (EX: vcb, mbbank, bidv)
@@ -534,7 +551,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
     return 'https://img.vietqr.io/image/'
         '$bankId-$accountNo-qr_only.png'
         '?amount=$amountInt'
-        '&addInfo=Tien%20Trai%20Cay'
+        '&addInfo=${Uri.encodeComponent(orderCode)}'
         '&accountName=${Uri.encodeComponent(accountName)}';
   }
 
@@ -550,9 +567,13 @@ class _FruitListScreenState extends State<FruitListScreen> {
       return;
     }
 
-    // Controller to read the cash amount entered by mom
+    // Generate a unique 4-digit order code (e.g., DH4829)
+    final String orderCode = 'SEVQR DH${1000 + Random().nextInt(9000)}';
+
     final TextEditingController cashController = TextEditingController();
     int cashAmount = 0;
+    Timer? pollingTimer; // Timer to check payment every 3 seconds
+    bool isProcessingSuccess = false;
 
     showModalBottomSheet(
       context: context,
@@ -561,18 +582,64 @@ class _FruitListScreenState extends State<FruitListScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        // StatefulBuilder allows updating the UI inside the BottomSheet dynamically
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            // Calculate remaining transfer amount (never less than 0)
             int transferAmount = totalAmount - cashAmount;
             if (transferAmount < 0) transferAmount = 0;
 
             final String qrData = _generateVietQRString(
               transferAmount.toDouble(),
+              orderCode,
             );
 
-            // Padding adjusts automatically when the mobile keyboard pops up
+            // Start polling timer if transferAmount > 0 and timer hasn't started
+            if (transferAmount > 0 && pollingTimer == null) {
+              pollingTimer = Timer.periodic(const Duration(seconds: 3), (
+                timer,
+              ) async {
+                if (isProcessingSuccess) return;
+
+                try {
+                  final String checkUrl =
+                      'http://$computerIp:8000/api/check-payment?code=$orderCode&amount=$transferAmount';
+                  final response = await http.get(Uri.parse(checkUrl));
+
+                  if (response.statusCode == 200) {
+                    final data = json.decode(response.body);
+                    if (data['paid'] == true && !isProcessingSuccess) {
+                      isProcessingSuccess = true;
+                      timer.cancel(); // Stop polling
+
+                      // Speak Vietnamese notification aloud
+                      await _speakVietnamese(
+                        "Đã nhận chuyển khoản thành công $transferAmount đồng",
+                      );
+
+                      // Close the bottom sheet automatically
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                      }
+
+                      // Deduct stock and save order to MySQL
+                      int actualCashRevenue = cashAmount > totalAmount
+                          ? totalAmount
+                          : cashAmount;
+                      await _processOrderAndDeductStock(
+                        totalAmount,
+                        actualCashRevenue,
+                        transferAmount,
+                      );
+                    }
+                  }
+                } catch (e) {
+                  // Ignore temporary network errors during polling
+                }
+              });
+            } else if (transferAmount == 0 && pollingTimer != null) {
+              pollingTimer?.cancel();
+              pollingTimer = null;
+            }
+
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
@@ -593,9 +660,9 @@ class _FruitListScreenState extends State<FruitListScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'THANH TOÁN ĐƠN HÀNG',
-                      style: TextStyle(
+                    Text(
+                      'THANH TOÁN ($orderCode)',
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
@@ -612,7 +679,6 @@ class _FruitListScreenState extends State<FruitListScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Text field to enter cash received from customer
                     TextField(
                       controller: cashController,
                       keyboardType: TextInputType.number,
@@ -623,7 +689,6 @@ class _FruitListScreenState extends State<FruitListScreen> {
                         prefixIcon: Icon(Icons.money, color: Colors.green),
                       ),
                       onChanged: (value) {
-                        // Update cashAmount and redraw modal whenever mom types
                         setModalState(() {
                           cashAmount = int.tryParse(value) ?? 0;
                         });
@@ -631,7 +696,6 @@ class _FruitListScreenState extends State<FruitListScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Display the remaining amount that needs to be transferred
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -661,22 +725,70 @@ class _FruitListScreenState extends State<FruitListScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Only show the QR Code if transferAmount is greater than 0
                     if (transferAmount > 0) ...[
                       Image.network(
                         qrData,
-                        width: 240,
-                        height: 240,
+                        width: 220,
+                        height: 220,
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Khách mở App Ngân hàng quét mã này là xong nhé!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.blueGrey,
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Đang tự động chờ khách quét mã...',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Manual trigger button to verify payment immediately when returning to the app
+                      TextButton.icon(
+                        onPressed: () async {
+                          final String checkUrl =
+                              'http://$computerIp:8000/api/check-payment?code=$orderCode&amount=$transferAmount';
+                          final response = await http.get(Uri.parse(checkUrl));
+                          if (response.statusCode == 200) {
+                            final data = json.decode(response.body);
+                            if (data['paid'] == true) {
+                              pollingTimer?.cancel();
+                              await _speakVietnamese(
+                                "Đã nhận chuyển khoản thành công $transferAmount đồng",
+                              );
+                              if (context.mounted) Navigator.pop(context);
+                              int actualCashRevenue = cashAmount > totalAmount
+                                  ? totalAmount
+                                  : cashAmount;
+                              await _processOrderAndDeductStock(
+                                totalAmount,
+                                actualCashRevenue,
+                                transferAmount,
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Hệ thống chưa nhận được tiền, vui lòng đợi vài giây...',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.refresh, color: Colors.blue),
+                        label: const Text(
+                          'Bấm để kiểm tra ngay',
+                          style: TextStyle(color: Colors.blue),
                         ),
                       ),
                     ] else ...[
@@ -696,15 +808,11 @@ class _FruitListScreenState extends State<FruitListScreen> {
                     const SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () async {
-                        // Close bottom sheet
+                        pollingTimer?.cancel(); // Stop timer if closed manually
                         Navigator.pop(context);
-
-                        // Ensure cashAmount saved does not exceed totalAmount (in case customer gave extra cash)
                         int actualCashRevenue = cashAmount > totalAmount
                             ? totalAmount
                             : cashAmount;
-
-                        // Deduct stock and save order to MySQL
                         await _processOrderAndDeductStock(
                           totalAmount,
                           actualCashRevenue,
@@ -716,7 +824,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
                         minimumSize: const Size.fromHeight(50),
                       ),
                       child: const Text(
-                        'Hoàn Thành & Đóng',
+                        'Hoàn Thành & Đóng (Thủ Công)',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -731,7 +839,10 @@ class _FruitListScreenState extends State<FruitListScreen> {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      // Always cancel the timer when the bottom sheet is dismissed
+      pollingTimer?.cancel();
+    });
   }
 
   @override
