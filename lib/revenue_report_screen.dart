@@ -35,8 +35,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
     final String computerIp = dotenv.env['COMPUTER_IP'] ?? '';
-    final String apiUrl =
-        'http://$computerIp:8000/api/orders?date=$formattedDate';
+    final String apiUrl = 'https://$computerIp/api/orders?date=$formattedDate';
 
     try {
       final response = await http.get(Uri.parse(apiUrl));

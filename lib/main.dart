@@ -72,7 +72,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
   // Function to fetch real-time fruit data from Laravel backend
   Future<void> _fetchFruitsFromBackend() async {
     final String apiUrl =
-        'http://$computerIp:8000/api/products'; // Path to product list api
+        'https://$computerIp/api/products'; // Path to product list api
 
     try {
       // Send a GET request to the Laravel API
@@ -110,7 +110,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
   // Function to send a DELETE request to Laravel backend
   Future<void> _deleteFruitFromBackend(int id) async {
-    final String apiUrl = 'http://$computerIp:8000/api/products/$id';
+    final String apiUrl = 'https://$computerIp/api/products/$id';
 
     try {
       final response = await http.delete(Uri.parse(apiUrl));
@@ -147,7 +147,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
     int price,
     double stock,
   ) async {
-    final String apiUrl = 'http://$computerIp:8000/api/products';
+    final String apiUrl = 'https://$computerIp/api/products';
 
     try {
       // Send HTTP POST request with fruit details in JSON format
@@ -183,7 +183,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
     int price,
     double stock,
   ) async {
-    final String apiUrl = 'http://$computerIp:8000/api/products/$id';
+    final String apiUrl = 'https://$computerIp/api/products/$id';
 
     try {
       // Send HTTP PUT request with updated fruit details
@@ -470,7 +470,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
           // Prepare the PUT API endpoint for updating this specific fruit
           final String updateProductUrl =
-              'http://$computerIp:8000/api/products/$fruitId';
+              'https://$computerIp/api/products/$fruitId';
 
           // Send PUT request with the new stock value to Laravel backend
           await http.put(
@@ -482,7 +482,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
       }
 
       // 2. Send POST request to save order history in 'orders' table
-      final String createOrderUrl = 'http://$computerIp:8000/api/orders';
+      final String createOrderUrl = 'https://$computerIp/api/orders';
       final String itemsSummaryText = summaryItems.join(', ');
 
       await http.post(
@@ -601,7 +601,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
 
                 try {
                   final String checkUrl =
-                      'http://$computerIp:8000/api/check-payment?code=$orderCode&amount=$transferAmount';
+                      'https://$computerIp/api/check-payment?code=$orderCode&amount=$transferAmount';
                   final response = await http.get(Uri.parse(checkUrl));
 
                   if (response.statusCode == 200) {
@@ -756,7 +756,7 @@ class _FruitListScreenState extends State<FruitListScreen> {
                       TextButton.icon(
                         onPressed: () async {
                           final String checkUrl =
-                              'http://$computerIp:8000/api/check-payment?code=$orderCode&amount=$transferAmount';
+                              'https://$computerIp/api/check-payment?code=$orderCode&amount=$transferAmount';
                           final response = await http.get(Uri.parse(checkUrl));
                           if (response.statusCode == 200) {
                             final data = json.decode(response.body);
